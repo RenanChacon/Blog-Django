@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Primeito Template</title>
+</head>
+<body>
+    <h1>Bem-vindo ao meu site com Django!</h1>
+    <hr>
+    {% for post in posts %}
+        <article>
+            <a href="{% url 'post_detalhes' post.pk %}">  
+                <h2>{{post.titulo}}</h2>
+            </a>
+                <p>{{post.conteudo}}</p>   
+        </article>    
+        <hr>
+    {% endfor %}    
+    
+</body>
+</html>
