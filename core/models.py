@@ -6,5 +6,5 @@ class Post(models.Model):
     conteudo = models.TextField()
 
     def __str__(self):
-        return self.titulo
+        return self.conteudo
     
