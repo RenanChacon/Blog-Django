@@ -1,7 +1,7 @@
 from django.test import TestCase
 from .models import Post
 
-#comentario teste
+#comentario 
 class TestPostModel(TestCase):
 
     def setUp(self):
