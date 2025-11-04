@@ -7,7 +7,7 @@ on:
     branches: [ master ]
 
 jobs:
-  # NÓ 1: Build e Testes Unitários
+  
   build-and-test:
     runs-on: ubuntu-latest
     steps:
@@ -25,14 +25,11 @@ jobs:
           pip install -r requirements.txt
           
       - name: 4. Rodar Testes (Django)
-        # O 'manage.py test' precisa da SECRET_KEY para rodar
         env:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: |
           python manage.py test
 
-  # NÓ 2: SAST (Análise Estática de Segurança)
-  # Este job roda em paralelo com o 'build-and-test'
   sast:
     runs-on: ubuntu-latest
     steps:
@@ -60,14 +57,10 @@ jobs:
           bandit -r . --exclude "./venv,./migrations,./tests.py"
 
       - name: 6. SAST (Dependency Review)
-        # Verifica seu requirements.txt por pacotes com vulnerabilidades
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@v4
 
-  # NÓ 3: DAST (Análise Dinâmica de Segurança)
-  # Este job SÓ RODA DEPOIS que 'build-and-test' e 'sast' passarem
   dast:
-    # 'needs' garante que este job só rode se os outros 2 passarem
     needs: [build-and-test, sast]
     runs-on: ubuntu-latest
     
@@ -88,9 +81,7 @@ jobs:
       
       - name: 4. Iniciar o servidor (em background)
         env:
-          # O servidor precisa da SECRET_KEY para iniciar
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          # Desativa o modo Debug para um teste mais realista
           DEBUG: "False" 
         run: |
           # Inicia o Gunicorn em background na porta 8000
@@ -100,9 +91,7 @@ jobs:
           sleep 15 
           
       - name: 5. Rodar DAST (OWASP ZAP Scan)
-        # Esta Action vai "atacar" seu site rodando em localhost
         uses: zaproxy/action-baseline@v0.11.0
         with:
-          # Alvo é o servidor que acabamos de iniciar
           target: 'http://127.0.0.1:8000'
           fail_action: true
