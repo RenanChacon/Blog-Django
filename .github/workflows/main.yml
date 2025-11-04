@@ -1,15 +1,15 @@
-name: Pipeline
+name: Pipeline 
 
 on:
   push:
-    branches: [ master ]  
+    branches: [ master ]
   pull_request:
-    branches: [ master ]  
+    branches: [ master ]
 
 jobs:
-  build:
+  # NÓ 1: Build e Testes Unitários
+  build-and-test:
     runs-on: ubuntu-latest
-
     steps:
       - name: 1. Checkout do repositório
         uses: actions/checkout@v4
@@ -22,20 +22,87 @@ jobs:
       - name: 3. Instalar dependências
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt bandit
+          pip install -r requirements.txt
+          
+      - name: 4. Rodar Testes (Django)
+        # O 'manage.py test' precisa da SECRET_KEY para rodar
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          python manage.py test
+
+  # NÓ 2: SAST (Análise Estática de Segurança)
+  # Este job roda em paralelo com o 'build-and-test'
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 3. Instalar dependências para SAST
+        run: |
+          python -m pip install --upgrade pip
+          # Instala o bandit e o flake8 para as análises
+          pip install bandit flake8
           
       - name: 4. Rodar Linter (Flake8)
         run: |
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=migrations,venv,__pycache__
           
-      - name: 5. Rodar Testes
+      - name: 5. Rodar SAST (Bandit)
         run: |
-          python manage.py test
-      
-      - name: 6. SAST (Dependências)
-        run: |
+          # Procura por falhas de segurança no código
           bandit -r . --exclude "./venv,./migrations,./tests.py"
 
-      - name: 7. SAST (Dependency Review)
+      - name: 6. SAST (Dependency Review)
+        # Verifica seu requirements.txt por pacotes com vulnerabilidades
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@v4
+
+  # NÓ 3: DAST (Análise Dinâmica de Segurança)
+  # Este job SÓ RODA DEPOIS que 'build-and-test' e 'sast' passarem
+  dast:
+    # 'needs' garante que este job só rode se os outros 2 passarem
+    needs: [build-and-test, sast]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 1. Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 3. Instalar dependências (com Gunicorn)
+        run: |
+          python -m pip install --upgrade pip
+          # Gunicorn é um servidor de produção. É melhor que o 'runserver'
+          pip install -r requirements.txt gunicorn
+      
+      - name: 4. Iniciar o servidor (em background)
+        env:
+          # O servidor precisa da SECRET_KEY para iniciar
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          # Desativa o modo Debug para um teste mais realista
+          DEBUG: "False" 
+        run: |
+          # Inicia o Gunicorn em background na porta 8000
+          # Substitua 'config.wsgi' pelo caminho do seu arquivo wsgi
+          gunicorn config.wsgi --bind 0.0.0.0:8000 &
+          # Dá um tempo para o servidor subir
+          sleep 15 
+          
+      - name: 5. Rodar DAST (OWASP ZAP Scan)
+        # Esta Action vai "atacar" seu site rodando em localhost
+        uses: zaproxy/action-baseline@v0.11.0
+        with:
+          # Alvo é o servidor que acabamos de iniciar
+          target: 'http://127.0.0.1:8000'
+          fail_action: true
